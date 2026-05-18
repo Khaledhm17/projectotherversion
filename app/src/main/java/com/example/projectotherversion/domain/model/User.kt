@@ -8,5 +8,7 @@ data class User(
     val role: String = "",
     val profession: String? = null,
     val isBlocked: Boolean = false,
-    val profileImage: String? = null
+    val profileImage: String? = null,
+    val totalRating: Double = 0.0,
+    val ratingCount: Int = 0
 )

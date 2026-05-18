@@ -25,6 +25,8 @@ import com.example.projectotherversion.presentation.screens.settings.SettingsVie
 import com.example.projectotherversion.presentation.screens.visitor.VisitorScreen
 import com.example.projectotherversion.presentation.screens.workrequests.WorkRequestsScreen
 import com.example.projectotherversion.presentation.screens.workrequests.WorkRequestsViewModel
+import com.example.projectotherversion.presentation.screens.rating.RatingScreen
+import com.example.projectotherversion.presentation.screens.rating.RatingViewModel
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -38,6 +40,9 @@ sealed class Screen(val route: String) {
     object Complaints : Screen("complaints")
     object WorkRequests : Screen("work_requests")
     object MyPosts : Screen("my_posts")
+    object Rating : Screen("rating/{artisanId}/{artisanName}") {
+        fun createRoute(artisanId: String, artisanName: String) = "rating/$artisanId/$artisanName"
+    }
 }
 
 @Composable
@@ -125,7 +130,10 @@ fun AppNavigation() {
                 viewModel = viewModel,
                 otherUserId = userId,
                 otherUserName = userName,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToRating = { id, name ->
+                    navController.navigate(Screen.Rating.createRoute(id, name))
+                }
             )
         }
 
@@ -169,6 +177,26 @@ fun AppNavigation() {
             val viewModel = hiltViewModel<MyPostsViewModel>()
             MyPostsScreen(
                 viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // شاشة التقييم
+        composable(
+            route = Screen.Rating.route,
+            arguments = listOf(
+                navArgument("artisanId") { type = NavType.StringType },
+                navArgument("artisanName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val artisanId = backStackEntry.arguments?.getString("artisanId") ?: return@composable
+            val artisanName = backStackEntry.arguments?.getString("artisanName") ?: return@composable
+            
+            val viewModel = hiltViewModel<RatingViewModel>()
+            RatingScreen(
+                viewModel = viewModel,
+                artisanId = artisanId,
+                artisanName = artisanName,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

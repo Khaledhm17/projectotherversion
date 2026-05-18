@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,30 +25,67 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     otherUserId: String,
     otherUserName: String,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToRating: (String, String) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
     val listState = rememberLazyListState()
+    var showFinishDealDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(otherUserId) {
         viewModel.initialize(otherUserId, otherUserName)
     }
 
-    // التمرير التلقائي عند وصول رسائل جديدة
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.size - 1)
         }
     }
 
+    if (showFinishDealDialog) {
+        AlertDialog(
+            onDismissRequest = { showFinishDealDialog = false },
+            title = { Text("إنهاء الصفقة", color = Color(0xFF1565C0)) },
+            text = { Text("هل تم تقديم الخدمة بنجاح؟ يمكنك تقييم الحرفي الآن.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showFinishDealDialog = false
+                        onNavigateToRating(otherUserId, otherUserName)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+                ) {
+                    Text("تقييم الحرفي")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFinishDealDialog = false }) {
+                    Text("إلغاء", color = Color.Black)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
     Scaffold(
-        modifier = Modifier.fillMaxSize().imePadding(), // إضافة imePadding لمنع أخطاء الـ IME
+        modifier = Modifier.fillMaxSize().imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(otherUserName, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
+                actions = {
+                    // زر "انتهت الصفقة" يظهر فقط للزبون (إذا كان يتحدث مع حرفي)
+                    // للتبسيط، سنظهره دائماً حالياً في صفحة المحادثة
+                    TextButton(onClick = { showFinishDealDialog = true }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("انتهت الصفقة", color = Color(0xFF1565C0))
+                        }
                     }
                 }
             )
@@ -74,7 +112,7 @@ fun ChatScreen(
                     Spacer(Modifier.width(8.dp))
                     FloatingActionButton(
                         onClick = { viewModel.sendMessage() },
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        containerColor = Color(0xFF1565C0),
                         shape = RoundedCornerShape(50.dp),
                         modifier = Modifier.size(48.dp)
                     ) {
@@ -109,7 +147,7 @@ fun MessageItem(message: Message, isMine: Boolean) {
     ) {
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = if (isMine) MaterialTheme.colorScheme.primaryContainer else Color.LightGray.copy(alpha = 0.3f)
+                containerColor = if (isMine) Color(0xFFBBDEFB) else Color(0xFFF5F5F5)
             ),
             shape = RoundedCornerShape(
                 topStart = 12.dp,
@@ -122,7 +160,7 @@ fun MessageItem(message: Message, isMine: Boolean) {
                 text = message.content,
                 modifier = Modifier.padding(12.dp),
                 fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurface
+                color = Color.Black
             )
         }
     }

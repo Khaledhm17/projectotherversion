@@ -17,6 +17,7 @@ interface ArtisanRepository {
     fun getAllUsers(): Flow<List<User>>
     suspend fun blockUser(userId: String, blocked: Boolean): Result<Unit>
     fun getClientsWhoContacted(artisanId: String): Flow<List<User>>
+    suspend fun getUserById(userId: String): User?
 
     // Posts
     suspend fun createPost(post: Post, imageUri: Uri?): Result<Unit>
@@ -32,4 +33,7 @@ interface ArtisanRepository {
     suspend fun submitComplaint(complaint: Complaint): Result<Unit>
     fun getAllComplaints(): Flow<List<Complaint>>
     suspend fun deleteComplaint(complaintId: String): Result<Unit>
+
+    // Rating
+    suspend fun submitRating(rating: Rating): Result<Unit>
 }

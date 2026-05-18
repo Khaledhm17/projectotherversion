@@ -34,7 +34,9 @@ class ArtisanRepositoryImpl @Inject constructor(
         role = role ?: "CUSTOMER",
         profession = profession ?: "",
         isBlocked = isBlocked ?: false,
-        profileImage = profileImage.toFullUrl("avatars")
+        profileImage = profileImage.toFullUrl("avatars"),
+        totalRating = totalRating ?: 0.0,
+        ratingCount = ratingCount ?: 0
     )
 
     private fun PostDto.toDomain(): Post = Post(
@@ -52,21 +54,21 @@ class ArtisanRepositoryImpl @Inject constructor(
     private fun MessageDto.toDomain(): Message {
         val timeInMillis = try {
             if (!createdAt.isNullOrBlank()) {
-                // استخدام Instant مباشرة فهو أكثر استقراراً في التحويل
-                java.time.Instant.parse(createdAt).toEpochMilli()
+                OffsetDateTime.parse(createdAt, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toInstant()
+                    .toEpochMilli()
             } else {
-                System.currentTimeMillis()
+                id?.toLongOrNull() ?: System.currentTimeMillis()
             }
         } catch (e: Exception) {
-            // إذا فشل التحويل، نستخدم معرف الرسالة لعمل طابع زمني تقريبي لتجنب التكرار
             System.currentTimeMillis()
         }
 
         return Message(
-            id = id?.toString() ?: "", // تأكد أن الـ ID لا يسبب نل
-            senderId = senderId ?: "",
-            receiverId = receiverId ?: "",
-            content = content ?: "",
+            id = id?.toString() ?: "",
+            senderId = senderId,
+            receiverId = receiverId,
+            content = content,
             timestamp = timeInMillis
         )
     }
@@ -74,13 +76,17 @@ class ArtisanRepositoryImpl @Inject constructor(
     override suspend fun login(email: String, password: String): Result<User?> {
         val authResult = authService.login(email, password)
         if (authResult.isFailure) return Result.failure(authResult.exceptionOrNull()!!)
+        
         val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("المستخدم غير موجود"))
         val userDto = dbService.getUserProfile(userId)
         val userDomain = userDto?.toDomain()
+
+        // التحقق من الحظر
         if (userDomain?.isBlocked == true) {
-            authService.logout()
+            authService.logout() // تسجيل الخروج فوراً لقتل الجلسة
             return Result.failure(Exception("عذراً، هذا الحساب محظور من قبل الإدارة."))
         }
+        
         return Result.success(userDomain)
     }
 
@@ -98,6 +104,8 @@ class ArtisanRepositoryImpl @Inject constructor(
     override suspend fun getCurrentUser(): User? {
         val userId = authService.getCurrentUserId() ?: return null
         val user = dbService.getUserProfile(userId)?.toDomain()
+        
+        // إذا حاول مستخدم محظور فتح التطبيق بجلسة قديمة
         if (user?.isBlocked == true) {
             authService.logout()
             return null
@@ -108,9 +116,15 @@ class ArtisanRepositoryImpl @Inject constructor(
     override fun getAllUsers(): Flow<List<User>> = dbService.getAllUsersFlow().map { list -> list.map { it.toDomain() } }
 
     override suspend fun blockUser(userId: String, blocked: Boolean): Result<Unit> = try {
+        // إضافة log للتأكد من وصول العملية لهذه النقطة
+        Log.d("REPOSITORY", "Requesting block for user: $userId, status: $blocked")
         dbService.updateUserProfile(userId, mapOf("is_blocked" to JsonPrimitive(blocked)))
         Result.success(Unit)
     } catch (e: Exception) { Result.failure(e) }
+
+    override suspend fun getUserById(userId: String): User? {
+        return dbService.getUserProfile(userId)?.toDomain()
+    }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun getClientsWhoContacted(artisanId: String): Flow<List<User>> {
@@ -180,6 +194,39 @@ class ArtisanRepositoryImpl @Inject constructor(
 
     override fun getNotificationsCount(userId: String): Flow<Int> = dbService.getAllMessagesFlow().map { messages ->
         messages.count { it.receiverId == userId }
+    }
+
+    override suspend fun submitRating(rating: Rating): Result<Unit> = try {
+        Log.d("RATING_DEBUG", "Attempting to submit rating: $rating")
+
+        // 1. تسجيل التقييم في جدول التقييمات
+        dbService.submitRating(RatingDto(
+            artisanId = rating.artisanId,
+            customerId = rating.customerId,
+            rating = rating.rating.toDouble() 
+        ))
+
+        // 2. تحديث إحصائيات الحرفي في جدول المستخدمين
+        val artisanDto = dbService.getUserProfile(rating.artisanId)
+        if (artisanDto != null) {
+            val currentTotal = artisanDto.totalRating ?: 0.0
+            val currentCount = artisanDto.ratingCount ?: 0
+            
+            val newTotal = currentTotal + rating.rating.toDouble()
+            val newCount = currentCount + 1
+
+            dbService.updateUserProfile(rating.artisanId, mapOf(
+                "total_rating" to JsonPrimitive(newTotal),
+                "rating_count" to JsonPrimitive(newCount)
+            ))
+            Log.d("RATING_DEBUG", "Updated Artisan stats: Total=$newTotal, Count=$newCount")
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("Artisan not found"))
+        }
+    } catch (e: Exception) {
+        Log.e("RATING_DEBUG", "Error in submitRating: ${e.message}")
+        Result.failure(e)
     }
 
     override suspend fun submitComplaint(complaint: Complaint): Result<Unit> = try {

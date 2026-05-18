@@ -16,6 +16,7 @@ import com.example.projectotherversion.domain.usecase.user.GetAllUsersUseCase
 import com.example.projectotherversion.domain.usecase.user.GetCurrentUserUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,6 +38,10 @@ class DashboardViewModel @Inject constructor(
 
     private var lastSeenMessagesCount = 0
 
+    // مرجع للوظائف لضمان إمكانية إعادة تشغيلها (Refresh)
+    private var usersJob: Job? = null
+    private var postsJob: Job? = null
+
     init {
         loadCurrentUser()
         observePosts()
@@ -48,7 +53,6 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val user = getCurrentUserUseCase()
-                Log.d("DashboardVM", "Logged in as: ${user?.name}, Role: ${user?.role}")
                 _state.update {
                     it.copy(
                         currentUser = user,
@@ -64,22 +68,21 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun observePosts() {
-        getAllPostsUseCase()
+        postsJob?.cancel()
+        postsJob = getAllPostsUseCase()
             .onEach { posts ->
-                Log.d("DashboardVM", "Posts updated from DB: ${posts.size}")
                 _state.update { it.copy(posts = posts, error = null) }
             }
             .catch { e ->
-                Log.e("DashboardVM", "Error observing posts: ${e.message}")
-                _state.update { it.copy(error = "فشل في جلب المنشورات: تأكد من جودة الإنترنت") }
+                _state.update { it.copy(error = "فشل في جلب المنشورات") }
             }
             .launchIn(viewModelScope)
     }
 
     private fun observeUsers() {
-        getAllUsersUseCase()
+        usersJob?.cancel()
+        usersJob = getAllUsersUseCase()
             .onEach { users ->
-                Log.d("DashboardVM", "Users updated: ${users.size}")
                 _state.update { it.copy(users = users) }
             }
             .catch { e ->
@@ -105,6 +108,10 @@ class DashboardViewModel @Inject constructor(
 
     fun onEvent(event: DashboardEvent) {
         when (event) {
+            DashboardEvent.RefreshData -> {
+                observeUsers()
+                observePosts()
+            }
             is DashboardEvent.CreatePost -> createPost(event.post, event.imageUri)
             is DashboardEvent.DeletePost -> deletePost(event.postId)
             is DashboardEvent.BlockUser -> blockUser(event.userId, event.blocked)
@@ -135,9 +142,7 @@ class DashboardViewModel @Inject constructor(
             if (result.isSuccess) {
                 _state.update { it.copy(isCreatingPost = false, postDescription = "", postImageUri = null) }
             } else {
-                val errorMsg = result.exceptionOrNull()?.message ?: "فشل النشر"
-                Log.e("DashboardVM", "Create post error: $errorMsg")
-                _state.update { it.copy(isCreatingPost = false, error = errorMsg) }
+                _state.update { it.copy(isCreatingPost = false, error = result.exceptionOrNull()?.message ?: "فشل النشر") }
             }
         }
     }
@@ -153,35 +158,21 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun blockUser(userId: String, blocked: Boolean) {
-        // 1. فحص الصلاحيات قبل الإرسال (أمان إضافي)
         val currentUser = _state.value.currentUser
         if (currentUser?.role != "ADMIN") {
             _state.update { it.copy(error = "لا تملك صلاحية مسؤول للنظام") }
             return
         }
-
-        Log.d("DashboardVM", "بدأت عملية الحظر للمستخدم: $userId")
-
         viewModelScope.launch {
-            // 2. استدعاء الـ UseCase واستقبال النتيجة من نوع Result
             val result = blockUserUseCase(userId, blocked)
-
             result.onSuccess {
-                Log.d("DashboardVM", "نجحت العملية في السيرفر")
-
-                // 3. التحديث المحلي للـ State لضمان استجابة الواجهة فوراً
                 _state.update { currentState ->
                     val updatedUsers = currentState.users.map { user ->
-                        if (user.id == userId) {
-                            user.copy(isBlocked = blocked)
-                        } else {
-                            user
-                        }
+                        if (user.id == userId) user.copy(isBlocked = blocked) else user
                     }
                     currentState.copy(users = updatedUsers, error = null)
                 }
             }.onFailure { error ->
-                Log.e("DashboardVM", "فشلت العملية: ${error.message}")
                 _state.update { it.copy(error = "فشل تحديث حالة الحظر: ${error.message}") }
             }
         }
@@ -212,6 +203,7 @@ data class DashboardState(
 )
 
 sealed class DashboardEvent {
+    object RefreshData : DashboardEvent() // الحدث الجديد للتحديث
     data class CreatePost(val post: Post, val imageUri: Uri?) : DashboardEvent()
     data class DeletePost(val postId: String) : DashboardEvent()
     data class BlockUser(val userId: String, val blocked: Boolean) : DashboardEvent()

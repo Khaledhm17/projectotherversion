@@ -1,6 +1,7 @@
 package com.example.projectotherversion.presentation.screens.dashboard
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,7 +45,12 @@ fun DashboardScreen(
     val state by viewModel.state.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
+
+    // تحديث البيانات فور ظهور الشاشة (يضمن تحديث التقييم عند العودة)
+    LaunchedEffect(Unit) {
+        viewModel.onEvent(DashboardEvent.RefreshData)
+    }
+
     val userRole = state.currentUser?.role ?: ""
     val isAdmin = userRole == "ADMIN"
     val isCraftsman = userRole == "CRAFTSMAN"
@@ -82,7 +89,7 @@ fun DashboardScreen(
             ModalDrawerSheet {
                 DrawerHeader(user = state.currentUser)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                
+
                 NavigationDrawerItem(
                     label = { Text("الرئيسية") },
                     icon = { Icon(Icons.Default.Home, null) },
@@ -110,28 +117,28 @@ fun DashboardScreen(
                         selected = false,
                         onClick = { onNavigateToComplaints(); scope.launch { drawerState.close() } }
                     )
-                    
+
                     NavigationDrawerItem(
-                        label = { 
+                        label = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(if (isCraftsman) "طلبات العمل" else "صندوق الرسائل")
                                 if (state.unreadWorkRequestsCount > 0) {
                                     Spacer(Modifier.width(8.dp))
-                                    Badge(containerColor = MaterialTheme.colorScheme.error) { 
-                                        Text(state.unreadWorkRequestsCount.toString(), color = MaterialTheme.colorScheme.onError) 
+                                    Badge(containerColor = MaterialTheme.colorScheme.error) {
+                                        Text(state.unreadWorkRequestsCount.toString(), color = MaterialTheme.colorScheme.onError)
                                     }
                                 }
                             }
                         },
                         icon = { Icon(Icons.Default.Email, null) },
                         selected = false,
-                        onClick = { 
+                        onClick = {
                             viewModel.onEvent(DashboardEvent.ResetWorkRequestsCount)
                             onNavigateToWorkRequests()
-                            scope.launch { drawerState.close() } 
+                            scope.launch { drawerState.close() }
                         }
                     )
-                    
+
                     NavigationDrawerItem(
                         label = { Text("منشوراتي") },
                         icon = { Icon(Icons.AutoMirrored.Filled.List, null) },
@@ -146,10 +153,10 @@ fun DashboardScreen(
                     selected = false,
                     onClick = { onNavigateToSettings(); scope.launch { drawerState.close() } }
                 )
-                
+
                 Spacer(Modifier.weight(1f))
                 HorizontalDivider()
-                
+
                 NavigationDrawerItem(
                     label = { Text("تسجيل الخروج", color = MaterialTheme.colorScheme.error) },
                     icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, null, tint = MaterialTheme.colorScheme.error) },
@@ -182,7 +189,7 @@ fun DashboardScreen(
                 if (state.error != null) {
                     Text(state.error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
                 }
-                
+
                 when {
                     isAdmin -> AdminDashboardContent(state) { id, b -> viewModel.onEvent(DashboardEvent.BlockUser(id, b)) }
                     isClient -> ClientDashboardContent(state, viewModel::onEvent, onNavigateToChat)
@@ -259,7 +266,7 @@ fun AdminDashboardContent(state: DashboardState, onBlockUser: (String, Boolean) 
                             Text("$r - ${user.city}", fontSize = 12.sp)
                         }
                         Button(
-                            onClick = { onBlockUser(user.id, !user.isBlocked) }, 
+                            onClick = { onBlockUser(user.id, !user.isBlocked) },
                             colors = ButtonDefaults.buttonColors(containerColor = if (user.isBlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         ) {
                             Text(if (user.isBlocked) "إلغاء الحظر" else "حظر")
@@ -279,10 +286,10 @@ fun ClientDashboardContent(state: DashboardState, onEvent: (DashboardEvent) -> U
             Box(modifier = Modifier.weight(1f)) { ProfessionSpinner(state.filterProfession, onProfessionSelected = { onEvent(DashboardEvent.UpdateFilterProfession(it)) }) }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        val posts = state.posts.filter { 
-            it.type == "SERVICE" && 
-            it.city == state.filterCity && 
-            it.profession == state.filterProfession 
+        val posts = state.posts.filter {
+            it.type == "SERVICE" &&
+                    it.city == state.filterCity &&
+                    it.profession == state.filterProfession
         }
         if (posts.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("لا توجد خدمات متاحة حالياً") }
         LazyColumn { items(posts) { post -> PostCard(post, state.users, false, onContact, {}) } }
@@ -297,10 +304,10 @@ fun CraftsmanDashboardContent(state: DashboardState, onEvent: (DashboardEvent) -
             Tab(selected = state.selectedTab == 1, onClick = { onEvent(DashboardEvent.UpdateSelectedTab(1)) }, text = { Text("خدماتي") })
         }
         val posts = if (state.selectedTab == 0) {
-            state.posts.filter { 
-                it.type == "REQUEST" && 
-                it.city == state.currentUser?.city && 
-                it.profession == state.currentUser?.profession 
+            state.posts.filter {
+                it.type == "REQUEST" &&
+                        it.city == state.currentUser?.city &&
+                        it.profession == state.currentUser?.profession
             }
         } else {
             state.posts.filter { it.type == "SERVICE" && it.authorId == state.currentUser?.id }
@@ -313,6 +320,12 @@ fun CraftsmanDashboardContent(state: DashboardState, onEvent: (DashboardEvent) -
 @Composable
 fun PostCard(post: Post, users: List<User>, isOwn: Boolean, onContact: (String, String) -> Unit, onDelete: () -> Unit) {
     val author = users.find { it.id == post.authorId }
+    var showDetails by remember { mutableStateOf(false) }
+
+    if (showDetails && author != null) {
+        UserDetailDialog(user = author, onDismiss = { showDetails = false })
+    }
+
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -327,14 +340,27 @@ fun PostCard(post: Post, users: List<User>, isOwn: Boolean, onContact: (String, 
                     Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(40.dp))
                 }
                 Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(post.authorName, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(post.authorName, fontWeight = FontWeight.Bold)
+                        if (author?.role == "CRAFTSMAN") {
+                            Spacer(Modifier.width(8.dp))
+                            // نمرر القيم مباشرة من كائن المؤلف الموجود في قائمة المستخدمين المحدثة
+                            RatingStars(author.totalRating, author.ratingCount)
+                        }
+                    }
                     Text("${post.city} - ${post.profession}", fontSize = 12.sp)
+                }
+
+                if (author?.role == "CRAFTSMAN") {
+                    TextButton(onClick = { showDetails = true }) {
+                        Text("التفاصيل", color = Color(0xFF1565C0))
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
             Text(post.description)
-            
+
             if (!post.imageUrl.isNullOrBlank()) {
                 Spacer(Modifier.height(12.dp))
                 AsyncImage(
@@ -344,7 +370,7 @@ fun PostCard(post: Post, users: List<User>, isOwn: Boolean, onContact: (String, 
                     contentScale = ContentScale.Crop
                 )
             }
-            
+
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), Arrangement.End) {
                 if (isOwn) IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
@@ -355,10 +381,60 @@ fun PostCard(post: Post, users: List<User>, isOwn: Boolean, onContact: (String, 
 }
 
 @Composable
+fun RatingStars(total: Double, count: Int) {
+    // التعديل: تحويل count إلى Double لضمان دقة القسمة وظهور الكسور
+    val avg = if (count > 0) total / count.toDouble() else 0.0
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.Star, null, tint = Color(0xFFFFB300), modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        // عرض رقم واحد بعد الفاصلة
+        Text(text = "%.1f".format(avg), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text = " ($count)", fontSize = 10.sp, color = Color.Gray)
+    }
+}
+
+@Composable
+fun UserDetailDialog(user: User, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تفاصيل الحرفي", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                if (!user.profileImage.isNullOrBlank()) {
+                    AsyncImage(
+                        model = user.profileImage,
+                        contentDescription = null,
+                        modifier = Modifier.size(80.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(80.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(user.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(user.profession ?: "حرفي", color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                RatingStars(user.totalRating, user.ratingCount)
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(user.city)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("إغلاق") }
+        }
+    )
+}
+
+@Composable
 fun AddPostDialog(state: DashboardState, onEvent: (DashboardEvent) -> Unit, onDismiss: () -> Unit, onPickImage: () -> Unit) {
     AlertDialog(
-        onDismissRequest = onDismiss, 
-        title = { Text("إضافة منشور") }, 
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة منشور") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.currentUser?.role == "CLIENT") {
@@ -366,7 +442,7 @@ fun AddPostDialog(state: DashboardState, onEvent: (DashboardEvent) -> Unit, onDi
                     ProfessionSpinner(state.selectedProfession, onProfessionSelected = { onEvent(DashboardEvent.UpdateSelectedProfession(it)) })
                 }
                 OutlinedTextField(value = state.postDescription, onValueChange = { onEvent(DashboardEvent.UpdatePostDescription(it)) }, label = { Text("الوصف") }, modifier = Modifier.fillMaxWidth())
-                
+
                 Button(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(8.dp))
@@ -374,7 +450,7 @@ fun AddPostDialog(state: DashboardState, onEvent: (DashboardEvent) -> Unit, onDi
                 }
             }
         },
-        confirmButton = { 
+        confirmButton = {
             Button(onClick = {
                 val prof = if (state.currentUser?.role == "CLIENT") state.selectedProfession else state.currentUser?.profession ?: ""
                 val type = if (state.currentUser?.role == "CLIENT") "REQUEST" else "SERVICE"

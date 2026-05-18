@@ -6,6 +6,7 @@ import com.example.projectotherversion.domain.usecase.post.*
 import com.example.projectotherversion.domain.usecase.message.*
 import com.example.projectotherversion.domain.usecase.user.*
 import com.example.projectotherversion.domain.usecase.complaint.*
+import com.example.projectotherversion.domain.usecase.rating.SubmitRatingUseCase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -88,4 +89,9 @@ object UseCaseModule {
     @Provides
     @ViewModelScoped
     fun provideDeleteComplaintUseCase(repository: ArtisanRepository) = DeleteComplaintUseCase(repository)
+
+    // Rating
+    @Provides
+    @ViewModelScoped
+    fun provideSubmitRatingUseCase(repository: ArtisanRepository) = SubmitRatingUseCase(repository)
 }

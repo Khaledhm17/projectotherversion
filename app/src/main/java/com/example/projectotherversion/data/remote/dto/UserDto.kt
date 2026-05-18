@@ -18,7 +18,11 @@ data class UserDto(
     @SerialName("profession")
     val profession: String? = null,
     @SerialName("is_blocked")
-    val isBlocked: Boolean = false,
+    val isBlocked: Boolean? = false,
     @SerialName("profile_image")
-    val profileImage: String? = null
+    val profileImage: String? = null,
+    @SerialName("total_rating")
+    val totalRating: Double? = 0.0,
+    @SerialName("rating_count")
+    val ratingCount: Int? = 0
 )
