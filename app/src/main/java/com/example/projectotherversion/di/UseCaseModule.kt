@@ -7,6 +7,7 @@ import com.example.projectotherversion.domain.usecase.message.*
 import com.example.projectotherversion.domain.usecase.user.*
 import com.example.projectotherversion.domain.usecase.complaint.*
 import com.example.projectotherversion.domain.usecase.rating.SubmitRatingUseCase
+import com.example.projectotherversion.domain.usecase.contract.*
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -94,4 +95,21 @@ object UseCaseModule {
     @Provides
     @ViewModelScoped
     fun provideSubmitRatingUseCase(repository: ArtisanRepository) = SubmitRatingUseCase(repository)
+
+    // Contracts
+    @Provides
+    @ViewModelScoped
+    fun provideCreateContractUseCase(repository: ArtisanRepository) = CreateContractUseCase(repository)
+
+    @Provides
+    @ViewModelScoped
+    fun provideUpdateContractStatusUseCase(repository: ArtisanRepository) = UpdateContractStatusUseCase(repository)
+
+    @Provides
+    @ViewModelScoped
+    fun provideGetContractsBetweenUseCase(repository: ArtisanRepository) = GetContractsBetweenUseCase(repository)
+
+    @Provides
+    @ViewModelScoped
+    fun provideGetAllContractsForUserUseCase(repository: ArtisanRepository) = GetAllContractsForUserUseCase(repository)
 }

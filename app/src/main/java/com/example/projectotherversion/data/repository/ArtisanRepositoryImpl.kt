@@ -31,7 +31,7 @@ class ArtisanRepositoryImpl @Inject constructor(
         name = name ?: "مستخدم",
         email = email ?: "",
         city = city ?: "",
-        role = role ?: "CUSTOMER",
+        role = role ?: "CLIENT", 
         profession = profession ?: "",
         isBlocked = isBlocked ?: false,
         profileImage = profileImage.toFullUrl("avatars"),
@@ -73,20 +73,32 @@ class ArtisanRepositoryImpl @Inject constructor(
         )
     }
 
+    private fun ContractDto.toDomain(): Contract = Contract(
+        id = id ?: "",
+        artisanId = artisanId,
+        customerId = customerId,
+        artisanName = artisanName,
+        customerName = customerName,
+        details = details,
+        price = price,
+        status = try { ContractStatus.valueOf(status.uppercase()) } catch (e: Exception) { ContractStatus.PENDING },
+        createdAt = try {
+            OffsetDateTime.parse(createdAt, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toInstant().toEpochMilli()
+        } catch (e: Exception) {
+            System.currentTimeMillis()
+        }
+    )
+
     override suspend fun login(email: String, password: String): Result<User?> {
         val authResult = authService.login(email, password)
         if (authResult.isFailure) return Result.failure(authResult.exceptionOrNull()!!)
-        
         val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("المستخدم غير موجود"))
         val userDto = dbService.getUserProfile(userId)
         val userDomain = userDto?.toDomain()
-
-        // التحقق من الحظر
         if (userDomain?.isBlocked == true) {
-            authService.logout() // تسجيل الخروج فوراً لقتل الجلسة
+            authService.logout()
             return Result.failure(Exception("عذراً، هذا الحساب محظور من قبل الإدارة."))
         }
-        
         return Result.success(userDomain)
     }
 
@@ -104,8 +116,6 @@ class ArtisanRepositoryImpl @Inject constructor(
     override suspend fun getCurrentUser(): User? {
         val userId = authService.getCurrentUserId() ?: return null
         val user = dbService.getUserProfile(userId)?.toDomain()
-        
-        // إذا حاول مستخدم محظور فتح التطبيق بجلسة قديمة
         if (user?.isBlocked == true) {
             authService.logout()
             return null
@@ -116,8 +126,6 @@ class ArtisanRepositoryImpl @Inject constructor(
     override fun getAllUsers(): Flow<List<User>> = dbService.getAllUsersFlow().map { list -> list.map { it.toDomain() } }
 
     override suspend fun blockUser(userId: String, blocked: Boolean): Result<Unit> = try {
-        // إضافة log للتأكد من وصول العملية لهذه النقطة
-        Log.d("REPOSITORY", "Requesting block for user: $userId, status: $blocked")
         dbService.updateUserProfile(userId, mapOf("is_blocked" to JsonPrimitive(blocked)))
         Result.success(Unit)
     } catch (e: Exception) { Result.failure(e) }
@@ -166,7 +174,6 @@ class ArtisanRepositoryImpl @Inject constructor(
     } catch (e: Exception) { Result.failure(e) }
 
     override suspend fun sendMessage(message: Message): Result<Unit> = try {
-        Log.d("CHAT_DEBUG", "Sending message from ${message.senderId} to ${message.receiverId}")
         val messageDto = MessageDto(
             senderId = message.senderId,
             receiverId = message.receiverId,
@@ -174,60 +181,52 @@ class ArtisanRepositoryImpl @Inject constructor(
         )
         dbService.sendMessage(messageDto)
         Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e("CHAT_DEBUG", "Failed to send message: ${e.message}")
-        Result.failure(e)
-    }
+    } catch (e: Exception) { Result.failure(e) }
 
     override fun getMessagesBetween(user1: String, user2: String): Flow<List<Message>> =
         dbService.getAllMessagesFlow().map { list ->
-            val filtered = list.filter {
+            list.filter {
                 (it.senderId == user1 && it.receiverId == user2) ||
                 (it.senderId == user2 && it.receiverId == user1)
             }.map { it.toDomain() }.sortedBy { it.timestamp }
-            Log.d("CHAT_DEBUG", "Messages found between $user1 and $user2: ${filtered.size}")
-            filtered
-        }.catch { e ->
-            Log.e("CHAT_DEBUG", "Error in getMessagesBetween: ${e.message}")
-            emit(emptyList())
-        }
+        }.catch { emit(emptyList()) }
 
     override fun getNotificationsCount(userId: String): Flow<Int> = dbService.getAllMessagesFlow().map { messages ->
         messages.count { it.receiverId == userId }
     }
 
     override suspend fun submitRating(rating: Rating): Result<Unit> = try {
-        Log.d("RATING_DEBUG", "Attempting to submit rating: $rating")
+        val newRatingVal = rating.rating.toDouble()
+        val oldRatingDto = dbService.getRating(rating.artisanId, rating.customerId)
+        val oldRatingVal = oldRatingDto?.rating ?: 0.0
 
-        // 1. تسجيل التقييم في جدول التقييمات
         dbService.submitRating(RatingDto(
+            id = oldRatingDto?.id, 
             artisanId = rating.artisanId,
             customerId = rating.customerId,
-            rating = rating.rating.toDouble() 
+            rating = newRatingVal
         ))
 
-        // 2. تحديث إحصائيات الحرفي في جدول المستخدمين
         val artisanDto = dbService.getUserProfile(rating.artisanId)
         if (artisanDto != null) {
             val currentTotal = artisanDto.totalRating ?: 0.0
             val currentCount = artisanDto.ratingCount ?: 0
-            
-            val newTotal = currentTotal + rating.rating.toDouble()
-            val newCount = currentCount + 1
-
+            val newTotal: Double
+            val newCount: Int
+            if (oldRatingDto != null) {
+                newTotal = (currentTotal - oldRatingVal + newRatingVal).coerceAtLeast(0.0)
+                newCount = currentCount
+            } else {
+                newTotal = currentTotal + newRatingVal
+                newCount = currentCount + 1
+            }
             dbService.updateUserProfile(rating.artisanId, mapOf(
                 "total_rating" to JsonPrimitive(newTotal),
                 "rating_count" to JsonPrimitive(newCount)
             ))
-            Log.d("RATING_DEBUG", "Updated Artisan stats: Total=$newTotal, Count=$newCount")
             Result.success(Unit)
-        } else {
-            Result.failure(Exception("Artisan not found"))
-        }
-    } catch (e: Exception) {
-        Log.e("RATING_DEBUG", "Error in submitRating: ${e.message}")
-        Result.failure(e)
-    }
+        } else { Result.failure(Exception("Artisan not found")) }
+    } catch (e: Exception) { Result.failure(e) }
 
     override suspend fun submitComplaint(complaint: Complaint): Result<Unit> = try {
         dbService.submitComplaint(ComplaintDto(senderId = complaint.senderId, senderName = complaint.senderName, subject = complaint.subject, message = complaint.message))
@@ -251,4 +250,37 @@ class ArtisanRepositoryImpl @Inject constructor(
     } catch (e: Exception) { Result.failure(e) }
 
     override suspend fun deleteAccount(): Result<Unit> = Result.success(Unit)
+
+    // Contracts
+    override suspend fun createContract(contract: Contract): Result<Unit> = try {
+        val contractDto = ContractDto(
+            artisanId = contract.artisanId,
+            customerId = contract.customerId,
+            artisanName = contract.artisanName,
+            customerName = contract.customerName,
+            details = contract.details,
+            price = contract.price,
+            status = contract.status.name
+        )
+        dbService.createContract(contractDto)
+        Result.success(Unit)
+    } catch (e: Exception) { Result.failure(e) }
+
+    override suspend fun updateContractStatus(contractId: String, status: ContractStatus): Result<Unit> = try {
+        dbService.updateContractStatus(contractId, status.name)
+        Result.success(Unit)
+    } catch (e: Exception) { Result.failure(e) }
+
+    override fun getContractsBetween(user1: String, user2: String): Flow<List<Contract>> =
+        dbService.getContractsFlow(user1).map { list ->
+            list.filter { 
+                (it.artisanId == user1 && it.customerId == user2) ||
+                (it.artisanId == user2 && it.customerId == user1)
+            }.map { it.toDomain() }
+        }.catch { emit(emptyList()) }
+
+    override fun getAllContractsForUser(userId: String): Flow<List<Contract>> =
+        dbService.getContractsFlow(userId).map { list ->
+            list.map { it.toDomain() }
+        }.catch { emit(emptyList()) }
 }

@@ -39,8 +39,6 @@ class SupabaseDbService @Inject constructor(
     }
 
     suspend fun updateUserProfile(uid: String, updates: Map<String, JsonElement>) {
-        // قمنا بإزالة try-catch هنا لضمان رمي الأخطاء في حال فشل التحديث في السيرفر
-        // هذا يمنع الـ ViewModel من الاعتقاد بأن الحظر نجح وهو لم يصل لقاعدة البيانات
         postgrest.from("users").update(JsonObject(updates)) {
             filter { eq("id", uid) }
         }
@@ -86,7 +84,50 @@ class SupabaseDbService @Inject constructor(
 
     suspend fun deleteComplaint(complaintId: String) { postgrest.from("complaints").delete { filter { eq("id", complaintId) } } }
 
-    suspend fun submitRating(ratingDto: RatingDto) {
-        postgrest.from("ratings").insert(ratingDto)
+    // Ratings
+    suspend fun getRating(artisanId: String, customerId: String): RatingDto? = try {
+        postgrest.from("ratings").select {
+            filter {
+                eq("artisan_id", artisanId)
+                eq("customer_id", customerId)
+            }
+        }.decodeSingleOrNull<RatingDto>()
+    } catch (e: Exception) {
+        null
     }
+
+    suspend fun submitRating(ratingDto: RatingDto) {
+        // نستخدم upsert مع تحديد onConflict لضمان التحديث عند وجود نفس الزبون والحرفي
+        postgrest.from("ratings").upsert(ratingDto) {
+            onConflict = "artisan_id,customer_id"
+        }
+    }
+
+    // Contracts
+    suspend fun createContract(contractDto: ContractDto) {
+        postgrest.from("contracts").insert(contractDto)
+    }
+
+    suspend fun updateContractStatus(contractId: String, status: String) {
+        postgrest.from("contracts").update(mapOf("status" to status)) {
+            filter { eq("id", contractId) }
+        }
+    }
+
+    fun getContractsFlow(userId: String): Flow<List<ContractDto>> = flow {
+        val initial = postgrest.from("contracts").select {
+            filter {
+                or {
+                    eq("artisan_id", userId)
+                    eq("customer_id", userId)
+                }
+            }
+        }.decodeList<ContractDto>()
+        emit(initial)
+        try {
+            emitAll(postgrest.from("contracts").selectAsFlow(ContractDto::id))
+        } catch (e: Exception) {
+            Log.e("SupabaseDb", "Contracts Realtime Error: ${e.message}")
+        }
+    }.catch { emit(emptyList()) }
 }

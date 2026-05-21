@@ -8,6 +8,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+// استيراد ملفات شاشة العقود الجديدة
+import com.example.projectotherversion.presentation.screens.contracts.ContractsScreen
+import com.example.projectotherversion.presentation.screens.contracts.ContractsViewModel
+// استيراد بقية الشاشات
 import com.example.projectotherversion.presentation.screens.chat.ChatScreen
 import com.example.projectotherversion.presentation.screens.chat.ChatViewModel
 import com.example.projectotherversion.presentation.screens.complaints.ComplaintsScreen
@@ -33,6 +37,7 @@ sealed class Screen(val route: String) {
     object Register : Screen("register")
     object Visitor : Screen("visitor")
     object Dashboard : Screen("dashboard")
+    object Contracts : Screen("contracts") // 1. أضفنا هذا المسار هنا
     object Chat : Screen("chat/{userId}/{userName}") {
         fun createRoute(userId: String, userName: String) = "chat/$userId/$userName"
     }
@@ -53,7 +58,6 @@ fun AppNavigation() {
         navController = navController,
         startDestination = Screen.Login.route
     ) {
-        // شاشة تسجيل الدخول
         composable(Screen.Login.route) {
             val viewModel = hiltViewModel<LoginViewModel>()
             LoginScreen(
@@ -68,7 +72,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة التسجيل
         composable(Screen.Register.route) {
             val viewModel = hiltViewModel<RegisterViewModel>()
             RegisterScreen(
@@ -82,7 +85,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة الزائر
         composable(Screen.Visitor.route) {
             VisitorScreen(
                 onNavigateBack = { navController.popBackStack() },
@@ -94,7 +96,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة لوحة التحكم الرئيسية
         composable(Screen.Dashboard.route) {
             val viewModel = hiltViewModel<DashboardViewModel>()
             DashboardScreen(
@@ -106,6 +107,7 @@ fun AppNavigation() {
                 onNavigateToComplaints = { navController.navigate(Screen.Complaints.route) },
                 onNavigateToWorkRequests = { navController.navigate(Screen.WorkRequests.route) },
                 onNavigateToMyPosts = { navController.navigate(Screen.MyPosts.route) },
+                onNavigateToContracts = { navController.navigate(Screen.Contracts.route) }, // 2. أضفنا هذا السطر لربط التنقل
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Dashboard.route) { inclusive = true }
@@ -114,7 +116,15 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة المحادثة
+        // 3. أضفنا تعريف شاشة العقود هنا داخل NavHost
+        composable(Screen.Contracts.route) {
+            val viewModel = hiltViewModel<ContractsViewModel>()
+            ContractsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
         composable(
             route = Screen.Chat.route,
             arguments = listOf(
@@ -137,7 +147,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة الإعدادات
         composable(Screen.Settings.route) {
             val viewModel = hiltViewModel<SettingsViewModel>()
             SettingsScreen(
@@ -151,7 +160,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة الشكاوى
         composable(Screen.Complaints.route) {
             val viewModel = hiltViewModel<ComplaintsViewModel>()
             ComplaintsScreen(
@@ -160,7 +168,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة طلبات العمل (للحرفي)
         composable(Screen.WorkRequests.route) {
             val viewModel = hiltViewModel<WorkRequestsViewModel>()
             WorkRequestsScreen(
@@ -172,7 +179,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة منشوراتي (للزبون)
         composable(Screen.MyPosts.route) {
             val viewModel = hiltViewModel<MyPostsViewModel>()
             MyPostsScreen(
@@ -181,7 +187,6 @@ fun AppNavigation() {
             )
         }
 
-        // شاشة التقييم
         composable(
             route = Screen.Rating.route,
             arguments = listOf(
@@ -191,7 +196,7 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val artisanId = backStackEntry.arguments?.getString("artisanId") ?: return@composable
             val artisanName = backStackEntry.arguments?.getString("artisanName") ?: return@composable
-            
+
             val viewModel = hiltViewModel<RatingViewModel>()
             RatingScreen(
                 viewModel = viewModel,

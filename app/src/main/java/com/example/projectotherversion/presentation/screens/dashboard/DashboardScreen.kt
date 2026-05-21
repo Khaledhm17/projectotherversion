@@ -40,13 +40,14 @@ fun DashboardScreen(
     onNavigateToComplaints: () -> Unit,
     onNavigateToWorkRequests: () -> Unit,
     onNavigateToMyPosts: () -> Unit,
+    onNavigateToContracts: () -> Unit,
     onLogout: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // تحديث البيانات فور ظهور الشاشة (يضمن تحديث التقييم عند العودة)
+    // تحديث البيانات فور ظهور الشاشة
     LaunchedEffect(Unit) {
         viewModel.onEvent(DashboardEvent.RefreshData)
     }
@@ -145,6 +146,18 @@ fun DashboardScreen(
                         selected = false,
                         onClick = { onNavigateToMyPosts(); scope.launch { drawerState.close() } }
                     )
+
+
+                    NavigationDrawerItem(
+                        label = { Text("صفقات اعمالي") },
+                        icon = { Icon(Icons.Default.Handshake, null) },
+                        selected = false,
+                        onClick = {
+                            onNavigateToContracts()
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+
                 }
 
                 NavigationDrawerItem(
@@ -166,6 +179,7 @@ fun DashboardScreen(
             }
         }
     ) {
+        // ... (بقية كود الـ Scaffold والمحتوى كما هو دون تغيير)
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -209,6 +223,8 @@ fun DashboardScreen(
         }
     }
 }
+
+// ... بقية الدوال (DrawerHeader, AdminDashboardContent, إلخ) كما هي في ملفك الأصلي
 
 @Composable
 fun DrawerHeader(user: User?) {

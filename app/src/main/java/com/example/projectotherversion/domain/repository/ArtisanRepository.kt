@@ -36,4 +36,10 @@ interface ArtisanRepository {
 
     // Rating
     suspend fun submitRating(rating: Rating): Result<Unit>
+
+    // Contracts
+    suspend fun createContract(contract: Contract): Result<Unit>
+    suspend fun updateContractStatus(contractId: String, status: ContractStatus): Result<Unit>
+    fun getContractsBetween(user1: String, user2: String): Flow<List<Contract>>
+    fun getAllContractsForUser(userId: String): Flow<List<Contract>>
 }

@@ -10,8 +10,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -25,6 +27,34 @@ fun MyPostsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val focusManager = LocalFocusManager.current
+    
+    // حالة لتتبع المنشور المراد حذفه لعرض رسالة التأكيد
+    var postToDeleteId by remember { mutableStateOf<String?>(null) }
+
+    // رسالة تأكيد الحذف
+    if (postToDeleteId != null) {
+        AlertDialog(
+            onDismissRequest = { postToDeleteId = null },
+            title = { Text("تأكيد الحذف", fontWeight = FontWeight.Bold) },
+            text = { Text("هل أنت متأكد من رغبتك في حذف هذا المنشور؟ لا يمكن التراجع عن هذه العملية.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        postToDeleteId?.let { viewModel.onEvent(MyPostsEvent.DeletePost(it)) }
+                        postToDeleteId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("حذف", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { postToDeleteId = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -58,7 +88,7 @@ fun MyPostsScreen(
                     items(state.posts) { post ->
                         PostCard(
                             post = post,
-                            onDelete = { viewModel.onEvent(MyPostsEvent.DeletePost(post.id)) }
+                            onDelete = { postToDeleteId = post.id }
                         )
                     }
                 }
